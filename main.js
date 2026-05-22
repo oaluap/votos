@@ -8,6 +8,13 @@ const zonaInput = document.getElementById("zonaInput");
 const zonaList = document.getElementById("zonaList");
 const zonaClearBtn = document.getElementById("zonaClear");
 const zonaStatus = document.getElementById("zonaStatus");
+const statsMeta = document.getElementById("statsMeta");
+const eleitoresBox = document.getElementById("eleitoresBox");
+const sumEleitoresAptos = document.getElementById("sumEleitoresAptos");
+const ELEITORES_FIELD = "EleitoresAptos";
+
+const SUM_FIELDS = ["1998", "2002", "2006", "2020"];
+const sumEls = Object.fromEntries(SUM_FIELDS.map((f) => [f, document.getElementById(`sum${f}`)]));
 
 // 3 planos de fundo (basemaps)
 const baseOSM = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -73,6 +80,18 @@ function getZona(feature) {
   return String(v).trim();
 }
 
+function zonaMatches(featureValue, searchValue) {
+  const a = String(featureValue ?? "").trim();
+  const b = String(searchValue ?? "").trim();
+  if (!a || !b) return false;
+
+  const na = Number(a);
+  const nb = Number(b);
+  if (!Number.isNaN(na) && !Number.isNaN(nb)) return na === nb;
+
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 function fillZonaDatalist(features) {
   if (!zonaList) return;
   const values = new Set();
@@ -84,12 +103,52 @@ function fillZonaDatalist(features) {
   zonaList.innerHTML = sorted.map((z) => `<option value="${escapeHtml(z)}"></option>`).join("");
 }
 
+function formatSum(n) {
+  return Number(n).toLocaleString("pt-BR");
+}
+
+function sumProperty(features, field) {
+  let sum = 0;
+  for (const f of features) {
+    const v = f?.properties?.[field];
+    if (v === null || v === undefined || v === "") continue;
+    const n = Number(v);
+    if (!Number.isNaN(n)) sum += n;
+  }
+  return sum;
+}
+
+function resetStatsPanel() {
+  for (const f of SUM_FIELDS) {
+    if (sumEls[f]) sumEls[f].textContent = "—";
+  }
+  if (sumEleitoresAptos) sumEleitoresAptos.textContent = "—";
+  if (eleitoresBox) eleitoresBox.hidden = true;
+  if (statsMeta) statsMeta.textContent = "Busque uma Zona para ver a soma.";
+}
+
+function updateStatsPanel(features, zonaLabel) {
+  for (const field of SUM_FIELDS) {
+    if (sumEls[field]) sumEls[field].textContent = formatSum(sumProperty(features, field));
+  }
+
+  if (eleitoresBox && sumEleitoresAptos) {
+    eleitoresBox.hidden = false;
+    sumEleitoresAptos.textContent = formatSum(sumProperty(features, ELEITORES_FIELD));
+  }
+
+  if (statsMeta) {
+    statsMeta.textContent = `${features.length} registro(s) • Zona = ${zonaLabel}`;
+  }
+}
+
 function clearHighlights() {
   if (!geoLayer) return;
   geoLayer.eachLayer((l) => {
     l.setStyle?.(DEFAULT_MARKER);
   });
-  setStatus("Passe o mouse para ver os atributos.");
+  resetStatsPanel();
+  setStatus("Clique em um ponto para ver os atributos.");
 }
 
 function highlightByZona(zonaValue) {
@@ -104,7 +163,7 @@ function highlightByZona(zonaValue) {
   geoLayer.eachLayer((l) => {
     const f = l.feature;
     const zf = getZona(f);
-    if (zf.toLowerCase() === z.toLowerCase()) {
+    if (zonaMatches(zf, z)) {
       l.setStyle?.(MATCH_MARKER);
       l.bringToFront?.();
       matches.push(l);
@@ -112,9 +171,15 @@ function highlightByZona(zonaValue) {
   });
 
   if (matches.length === 0) {
+    resetStatsPanel();
+    if (eleitoresBox) eleitoresBox.hidden = true;
+    if (statsMeta) statsMeta.textContent = `Nenhum resultado para Zona = ${z}.`;
     setStatus(`Nenhum resultado para Zona = ${z}.`);
     return;
   }
+
+  const features = matches.map((l) => l.feature).filter(Boolean);
+  updateStatsPanel(features, z);
 
   const group = L.featureGroup(matches);
   const bounds = group.getBounds();
@@ -139,31 +204,36 @@ async function loadGeoJSON() {
       if (keys.length === 0) return;
 
       const html = buildAttrTableHtml(props);
-      l.bindTooltip(html, {
-        sticky: true,
-        direction: "auto",
-        opacity: 0.98,
-        className: "attr-tooltip",
+      l.bindPopup(html, {
+        maxWidth: 760,
+        className: "attr-popup",
+        autoPan: true,
+        closeButton: true,
       });
 
+      l.on("click", () => {
+        l.setStyle?.({ ...MATCH_MARKER, radius: Math.max(MATCH_MARKER.radius || 10, 11) });
+        l.openPopup();
+      });
+      l.on("popupclose", () => {
+        // volta ao padrão; se houver filtro, o próximo "Buscar" re-aplica o estilo correto
+        l.setStyle?.(DEFAULT_MARKER);
+      });
+
+      // hover apenas para indicar interatividade (sem abrir tabela)
       l.on("mouseover", () => {
-        // Se estiver apagado, não “vira” destaque — só melhora um pouco a visibilidade
         const isDim = !!(l.options && l.options.opacity <= 0.11);
         l.setStyle?.(isDim ? { ...DIM_MARKER, radius: 6, opacity: 0.35, fillOpacity: 0.10 } : HOVER_MARKER);
-        l.openTooltip();
       });
       l.on("mouseout", () => {
-        // volta para o estilo atual: se estiver filtrado por Zona, o próximo "Buscar" re-aplica
-        // (mantemos simples: volta para default)
         l.setStyle?.(DEFAULT_MARKER);
-        l.closeTooltip();
       });
     },
   }).addTo(map);
 
   const bounds = geoLayer.getBounds();
   if (bounds && bounds.isValid()) map.fitBounds(bounds.pad(0.1));
-  setStatus("Passe o mouse para ver os atributos.");
+  setStatus("Clique em um ponto para ver os atributos.");
 }
 
 function escapeHtml(str) {

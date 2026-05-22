@@ -30,6 +30,28 @@
 
     <main class="main">
       <div id="map" class="map" aria-label="Mapa interativo"></div>
+      <aside id="statsPanel" class="stats" aria-label="Totais por ano (filtro Zona)">
+        <div class="stats__title">Totais (Zona filtrada)</div>
+        <p id="statsMeta" class="stats__meta">Busque uma Zona para ver a soma.</p>
+        <div id="eleitoresBox" class="eleitores-box" hidden>
+          <div class="eleitores-box__label">Eleitores aptos</div>
+          <div id="sumEleitoresAptos" class="eleitores-box__value">—</div>
+        </div>
+        <table class="stats__table">
+          <thead>
+            <tr>
+              <th>Ano</th>
+              <th>Soma</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>1998</td><td id="sum1998" class="stats__value">—</td></tr>
+            <tr><td>2002</td><td id="sum2002" class="stats__value">—</td></tr>
+            <tr><td>2006</td><td id="sum2006" class="stats__value">—</td></tr>
+            <tr><td>2020</td><td id="sum2020" class="stats__value">—</td></tr>
+          </tbody>
+        </table>
+      </aside>
     </main>
 
     <script
